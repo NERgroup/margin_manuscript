@@ -221,11 +221,11 @@ main_map <- ggplot() +
   ) +
   annotation_custom(
     grob = ca_inset_grob,
-    xmin = -121.997,
-    xmax = -121.960,
-    ymin = 36.610,
+    xmin = -121.9020,
+    xmax = -121.8750,
+    ymin = 36.618,
     ymax = 36.640
-  )+
+  ) +
   annotation_north_arrow(
     location = "tr",
     which_north = "true",
@@ -268,7 +268,7 @@ popout_map <- ggplot() +
     color = "red",
     fill = "red",
     shape = 21,
-    size = 2.5
+    size = 1.5
   ) +
   geom_sf(
     data = ca_counties,
@@ -309,12 +309,11 @@ popout_map <- ggplot() +
 g <- main_map +
   inset_element(
     popout_map,
-    left = 0.48,
-    bottom = -0.05,
-    right = 0.98,
-    top = 1.09
+    left = 0.01,
+    bottom = 0.45,
+    right = 0.56,
+    top = 1.05
   )
-
 g
 
 ################################################################################
