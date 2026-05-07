@@ -151,7 +151,7 @@ my_theme <- theme(
 )
 
 ################################################################################
-#Step 7 - build kelp forest, margin, shoreline, study area, and exclusion layers
+#Step 7 - build kelp forest, margin, and benthic site buffer layers
 
 kelp_utm <- planet_dat %>%
   st_transform(32610) %>%
@@ -169,46 +169,25 @@ kelp_margin <- kelp_forest %>%
   st_buffer(80) %>%
   st_as_sf() %>%
   st_make_valid() %>%
-  mutate(kelp_layer = "canopy margin")
+  mutate(kelp_layer = "margin")
 
-shoreline_40m <- ca_counties %>%
+transect_centroids_utm <- transect_swaths %>%
   st_transform(32610) %>%
+  mutate(
+    geometry = st_centroid(geometry)
+  )
+
+benthic_site_buffers <- transect_centroids_utm %>%
+  st_buffer(200) %>%
+  st_make_valid() %>%
+  mutate(buffer_m = 200)
+
+benthic_site_buffer_union <- benthic_site_buffers %>%
+  summarise() %>%
   st_union() %>%
-  st_boundary() %>%
-  st_buffer(40) %>%
   st_as_sf() %>%
   st_make_valid() %>%
-  mutate(kelp_layer = "very nearshore")
-
-study_area <- st_as_sfc(
-  st_bbox(
-    c(
-      xmin = -121.99,
-      xmax = -121.88,
-      ymin = 36.53,
-      ymax = 36.64
-    ),
-    crs = 4326
-  )
-) %>%
-  st_as_sf() %>%
-  st_transform(32610) %>%
-  mutate(area = "study area")
-
-cypress_exclude <- st_as_sfc(
-  st_bbox(
-    c(
-      xmin = -121.980,
-      xmax = -121.935,
-      ymin = 36.580,
-      ymax = 36.640
-    ),
-    crs = 4326
-  )
-) %>%
-  st_as_sf() %>%
-  st_transform(32610) %>%
-  mutate(area = "Cypress Coast exclusion")
+  mutate(buffer_layer = "benthic site buffer")
 
 ################################################################################
 #Step 8 - extract successful urchin prey dives in July-October 2024-2025
@@ -231,11 +210,7 @@ focal_dives <- forage_orig %>%
     crs = 4326,
     remove = FALSE
   ) %>%
-  st_transform(32610) %>%
-  filter(
-    lengths(st_intersects(geometry, study_area)) > 0,
-    lengths(st_intersects(geometry, cypress_exclude)) == 0
-  )
+  st_transform(32610)
 
 ################################################################################
 #Step 9 - identify focal bouts with >= 3 successful urchin prey dives
@@ -254,50 +229,41 @@ focal_bouts <- focal_dives %>%
   filter(focal_patch == "yes")
 
 ################################################################################
-#Step 10 - classify focal bouts relative to kelp canopy and shoreline
+#Step 10 - retain focal bouts within 200 m of benthic transect centroids
 
-focal_bouts_zone <- focal_bouts %>%
+focal_bouts_buffered <- focal_bouts %>%
+  filter(
+    lengths(st_intersects(geometry, benthic_site_buffer_union)) > 0
+  )
+
+################################################################################
+#Step 11 - classify buffered focal bouts relative to kelp canopy
+
+focal_bouts_zone <- focal_bouts_buffered %>%
   mutate(
-    in_very_nearshore = lengths(st_intersects(geometry, shoreline_40m)) > 0,
     in_margin = lengths(st_intersects(geometry, kelp_margin)) > 0,
     in_forest = lengths(st_intersects(geometry, kelp_forest)) > 0,
     kelp_zone = case_when(
-      in_very_nearshore ~ "very nearshore",
       in_forest ~ "forest",
-      in_margin ~ "canopy margin",
-      TRUE ~ "outside forest"
+      in_margin ~ "margin",
+      TRUE ~ "outside"
     ),
     kelp_zone = factor(
       kelp_zone,
-      levels = c(
-        "outside forest",
-        "very nearshore",
-        "canopy margin",
-        "forest"
-      )
+      levels = c("outside", "margin", "forest")
     )
   )
 
 ################################################################################
-#Step 11 - summarize proportion of focal bouts by canopy zone
+#Step 12 - summarize proportion of focal bouts by canopy zone
 
 focal_prop <- focal_bouts_zone %>%
   st_drop_geometry() %>%
   count(kelp_zone, name = "n_bouts") %>%
   complete(
     kelp_zone = factor(
-      c(
-        "outside forest",
-        "very nearshore",
-        "canopy margin",
-        "forest"
-      ),
-      levels = c(
-        "outside forest",
-        "very nearshore",
-        "canopy margin",
-        "forest"
-      )
+      c("outside", "margin", "forest"),
+      levels = c("outside", "margin", "forest")
     ),
     fill = list(n_bouts = 0)
   ) %>%
@@ -308,12 +274,11 @@ focal_prop <- focal_bouts_zone %>%
 focal_prop
 
 ################################################################################
-#Step 12 - plot focal bout proportions
+#Step 13 - plot focal bout proportions
 
 zone_cols <- c(
-  "outside forest" = "grey75",
-  "very nearshore" = "#E6AB02",
-  "canopy margin" = "#D95F02",
+  "outside" = "grey75",
+  "margin" = "#D95F02",
   "forest" = "#1B9E77"
 )
 
@@ -341,12 +306,7 @@ g_focal_prop <- ggplot(focal_prop, aes(x = kelp_zone, y = prop_bouts, fill = kel
   theme_bw() +
   my_theme +
   theme(
-    axis.text.x = element_text(
-      size = 8,
-      color = "black",
-      angle = 25,
-      hjust = 1
-    ),
+    axis.text.x = element_text(size = 9, color = "black"),
     axis.text.y = element_text(size = 9, color = "black"),
     axis.title.y = element_text(size = 10, color = "black"),
     axis.line = element_line(color = "black"),
@@ -356,11 +316,21 @@ g_focal_prop <- ggplot(focal_prop, aes(x = kelp_zone, y = prop_bouts, fill = kel
 g_focal_prop
 
 ################################################################################
-#Step 13 - California inset map
+#Step 14 - California inset map
 
 ca_inset <- ggplot() +
-  geom_sf(data = foreign, fill = "grey85", color = "white", linewidth = 0.2) +
-  geom_sf(data = usa, fill = "grey85", color = "white", linewidth = 0.2) +
+  geom_sf(
+    data = foreign,
+    fill = "grey85",
+    color = "white",
+    linewidth = 0.2
+  ) +
+  geom_sf(
+    data = usa,
+    fill = "grey85",
+    color = "white",
+    linewidth = 0.2
+  ) +
   annotate(
     "rect",
     xmin = -122.6,
@@ -386,7 +356,7 @@ ca_inset <- ggplot() +
 ca_inset_grob <- ggplotGrob(ca_inset)
 
 ################################################################################
-#Step 14 - MAR_06 popout map
+#Step 15 - MAR_06 popout map
 
 popout_map <- ggplot() +
   geom_sf(
@@ -432,22 +402,46 @@ popout_map <- ggplot() +
     axis.ticks = element_blank(),
     axis.line = element_blank(),
     panel.border = element_rect(color = "black", fill = NA, linewidth = 0.6),
-    plot.margin = margin(0,0,0,0)
+    plot.margin = margin(0, 0, 0, 0)
   )
 
-#################################################################################
-#Step 15 - left map: benthic site map
+################################################################################
+#Step 16 - left map: benthic site map
 
 benthic_map_base <- ggplot() +
-  geom_sf(data = planet_dat, fill = "#1B9E77", color = NA, alpha = 0.65) +
-  geom_sf(data = transect_swaths, fill = "yellow", color = "black",
-          linewidth = 0.25, alpha = 0.55) +
-  geom_sf(data = site_pts, color = "black", fill = "yellow",
-          shape = 21, size = 1.5) +
-  geom_sf(data = focal_pt, color = "red", fill = "red",
-          shape = 21, size = 2.2) +
-  geom_sf(data = ca_counties, color = "grey70", fill = "grey85",
-          linewidth = 0.2) +
+  geom_sf(
+    data = planet_dat,
+    fill = "#1B9E77",
+    color = NA,
+    alpha = 0.65
+  ) +
+  geom_sf(
+    data = transect_swaths,
+    fill = "yellow",
+    color = "black",
+    linewidth = 0.25,
+    alpha = 0.55
+  ) +
+  geom_sf(
+    data = site_pts,
+    color = "black",
+    fill = "yellow",
+    shape = 21,
+    size = 1.5
+  ) +
+  geom_sf(
+    data = focal_pt,
+    color = "red",
+    fill = "red",
+    shape = 21,
+    size = 2.2
+  ) +
+  geom_sf(
+    data = ca_counties,
+    color = "grey70",
+    fill = "grey85",
+    linewidth = 0.2
+  ) +
   annotation_custom(
     grob = ca_inset_grob,
     xmin = -121.9020,
@@ -462,13 +456,16 @@ benthic_map_base <- ggplot() +
     width = unit(0.45, "cm"),
     style = north_arrow_orienteering(text_col = NA)
   ) +
-  annotation_scale(location = "br", width_hint = 0.25, text_cex = 0.7) +
+  annotation_scale(
+    location = "br",
+    width_hint = 0.25,
+    text_cex = 0.7
+  ) +
   coord_sf(
     xlim = c(-121.99, -121.88),
     ylim = c(36.53, 36.64),
     expand = FALSE
   ) +
-  ggtitle("A") +
   theme_bw() +
   my_theme +
   theme(
@@ -478,24 +475,40 @@ benthic_map_base <- ggplot() +
       hjust = 0,
       margin = margin(b = 2)
     )
-  )
+  ) + labs(tag = "A")
 
 benthic_map <- benthic_map_base +
   inset_element(
     popout_map,
     left = 0.01,
-    bottom = 0.45,
+    bottom = 0.39,
     right = 0.56,
-    top = 1.05
+    top = 0.99
   )
 
 ################################################################################
-#Step 16 - right map: focal bouts with kelp cover
+#Step 17 - right map: focal bouts within 200 m of benthic sites
 
 focal_bout_map <- ggplot() +
-  geom_sf(data = planet_dat, fill = "#1B9E77", color = NA, alpha = 0.65) +
-  geom_sf(data = ca_counties, color = "grey70", fill = "grey85",
-          linewidth = 0.2) +
+  geom_sf(
+    data = planet_dat,
+    fill = "#1B9E77",
+    color = NA,
+    alpha = 0.65
+  ) +
+  geom_sf(
+    data = ca_counties,
+    color = "grey70",
+    fill = "grey85",
+    linewidth = 0.2
+  ) +
+  geom_sf(
+    data = benthic_site_buffers %>% st_transform(4326),
+    fill = NA,
+    color = "black",
+    linetype = "dashed",
+    linewidth = 0.25
+  ) +
   geom_sf(
     data = focal_bouts_zone %>% st_transform(4326),
     aes(fill = kelp_zone),
@@ -512,14 +525,21 @@ focal_bout_map <- ggplot() +
     width = unit(0.45, "cm"),
     style = north_arrow_orienteering(text_col = NA)
   ) +
-  annotation_scale(location = "br", width_hint = 0.25, text_cex = 0.7) +
+  annotation_scale(
+    location = "br",
+    width_hint = 0.25,
+    text_cex = 0.7
+  ) +
   coord_sf(
     xlim = c(-121.99, -121.88),
     ylim = c(36.53, 36.64),
     expand = FALSE
   ) +
-  labs(x = NULL, y = NULL) +
-  ggtitle("B") +
+  labs(
+    x = NULL,
+    y = NULL,
+    tag = "B"
+  ) +
   theme_bw() +
   my_theme +
   theme(
@@ -537,7 +557,7 @@ focal_bout_map <- ggplot() +
   )
 
 ################################################################################
-#Step 17 - combine maps
+#Step 18 - combine maps
 
 g_maps <- benthic_map + focal_bout_map +
   plot_layout(widths = c(1, 1))
@@ -545,43 +565,19 @@ g_maps <- benthic_map + focal_bout_map +
 g_maps
 
 ################################################################################
-#Step 18 - save two-panel map figure
+#Step 19 - save two-panel map figure
 
 ggsave(
   here("figures", "Fig1_benthic_sites_and_focal_urchin_bouts.png"),
   g_maps,
-  width = 12,
-  height = 4.5,
+  width = 10,
+  height = 6,
   dpi = 600,
   bg = "white"
 )
 
 ################################################################################
-#Step 18 - save two-panel map figure
-
-ggsave(
-  here("figures", "Fig1_benthic_sites_and_focal_urchin_bouts.png"),
-  g_maps,
-  width = 12,
-  height = 4.5,
-  dpi = 600,
-  bg = "white"
-)
-
-################################################################################
-#Step 18 - save two-panel map figure
-
-ggsave(
-  here("figures", "Fig1_benthic_sites_and_focal_urchin_bouts.png"),
-  g_maps,
-  width = 12,
-  height = 4.5,
-  dpi = 600,
-  bg = "white"
-)
-
-################################################################################
-#Step 19 - save focal bout proportion plot
+#Step 20 - save focal bout proportion plot
 
 ggsave(
   here("figures", "focal_urchin_bouts_kelp_canopy_prop.png"),
