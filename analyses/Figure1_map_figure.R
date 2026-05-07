@@ -296,12 +296,34 @@ p_faceted_margin <- ggplot(
     fill = metric
   )
 ) +
+  
+  annotate(
+    "rect",
+    xmin = -Inf,
+    xmax = 0,
+    ymin = -Inf,
+    ymax = Inf,
+    fill = "#7570B3",
+    alpha = 0.2
+  ) +
+  
+  annotate(
+    "rect",
+    xmin = 0,
+    xmax = Inf,
+    ymin = -Inf,
+    ymax = Inf,
+    fill = "#1B9E77",
+    alpha = 0.2
+  ) +
+  
   geom_vline(
     xintercept = 0,
     linetype = "dashed",
     linewidth = 1,
     color = "black"
   ) +
+  
   geom_ribbon(
     aes(
       ymin = mean_plot - se_plot,
@@ -310,8 +332,11 @@ p_faceted_margin <- ggplot(
     alpha = 0.18,
     color = NA
   ) +
+  
   geom_line(linewidth = 1.1) +
+  
   geom_point(size = 1.7) +
+  
   scale_color_manual(
     values = c(
       "Behavior" = "#333333",
@@ -320,6 +345,7 @@ p_faceted_margin <- ggplot(
       "Gonad index" = "#1F78B4"
     )
   ) +
+  
   scale_fill_manual(
     values = c(
       "Behavior" = "#333333",
@@ -328,19 +354,25 @@ p_faceted_margin <- ggplot(
       "Gonad index" = "#1F78B4"
     )
   ) +
+  
   facet_wrap(
     ~ metric,
     ncol = 1,
     scales = "free_y",
     labeller = labeller(
       metric = c(
-        "Macroalgal density" = "Macroalgal density [log(x + 1)\n(no. stipe per 10m²)]",
-        "Behavior" = "Proportion concealed",
-        "Urchin density" = "Purple urchin density\n(no. indiv. per 10m²)",
-        "Gonad index" = "Gonad index"
+        "Macroalgal density" =
+          "Macroalgal density [log(x + 1)\n(no. stipe per 10m²)]",
+        "Behavior" =
+          "Proportion concealed",
+        "Urchin density" =
+          "Purple urchin density\n(no. indiv. per 10m²)",
+        "Gonad index" =
+          "Gonad index"
       )
     )
   ) +
+  
   labs(
     x = "Distance from macroalgal margin (m)",
     y = NULL,
@@ -348,8 +380,10 @@ p_faceted_margin <- ggplot(
     fill = NULL,
     tag = "B"
   ) +
+  
   theme_bw() +
   base_theme +
+  
   theme(
     legend.position = "none",
     strip.text = element_text(size = 10, face = "bold"),
@@ -357,6 +391,8 @@ p_faceted_margin <- ggplot(
     plot.tag = element_text(face = "plain", color = "black"),
     plot.margin = margin(2, 2, 2, 2)
   )
+
+p_faceted_margin
 
 ################################################################################
 #Step 9 - California inset map
